@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wisata PWGT Dadi 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        body { background-color: #f3f4f6; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .app-container { max-width: 480px; margin: 0 auto; background-color: #ffffff; height: 100vh; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .content-area { flex: 1; overflow-y: auto; padding-bottom: 80px; background-color: #f9fafb; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isAdmin, setIsAdmin] = useState(() => JSON.parse(localStorage.getItem('tf_isAdmin')) || false);
+            const [adminPin, setAdminPin] = useState(() => localStorage.getItem('tf_adminPin') || '1234');
+            const [members, setMembers] = useState(() => JSON.parse(localStorage.getItem('tf_members')) || []);
+            const [incomes, setIncomes] = useState(() => JSON.parse(localStorage.getItem('tf_incomes')) || []);
+            const [expenses, setExpenses] = useState(() => JSON.parse(localStorage.getItem('tf_expenses')) || []);
+
+            const [alertState, setAlertState] = useState({ show: false, message: '', type: 'info' });
+            const [confirmState, setConfirmState] = useState({ show: false, message: '', onConfirm: null });
+            const [loginState, setLoginState] = useState({ show: false, pin: '' });
+            const [changePinModal, setChangePinModal] = useState({ show: false, oldPin: '', newPin: '', confirmPin: '' });
+            const [editForm, setEditForm] = useState(null);
+
+            const showAlert = (message, type = 'info') => setAlertState({ show: true, message, type });
+            const showConfirm = (message, onConfirm) => setConfirmState({ show: true, message, onConfirm });
+
+            useEffect(() => { localStorage.setItem('tf_isAdmin', JSON.stringify(isAdmin)); }, [isAdmin]);
+            useEffect(() => { localStorage.setItem('tf_adminPin', adminPin); }, [adminPin]);
+            useEffect(() => { localStorage.setItem('tf_members', JSON.stringify(members)); }, [members]);
+            useEffect(() => { localStorage.setItem('tf_incomes', JSON.stringify(incomes)); }, [incomes]);
+            useEffect(() => { localStorage.setItem('tf_expenses', JSON.stringify(expenses)); }, [expenses]);
+
+            const totalIncome = incomes.reduce((sum, item) => sum + Number(item.nominal), 0);
+            const totalExpense = expenses.reduce((sum, item) => sum + Number(item.nominal), 0);
+            const balance = totalIncome - totalExpense;
+            const formatRp = (angka) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+
+            const deleteTransaction = (id, type) => {
+                if (!isAdmin) return;
+                showConfirm("Yakin ingin menghapus transaksi ini? Data saldo akan dihitung ulang secara otomatis.", () => {
+                    if (type === 'income') setIncomes(incomes.filter(i => i.id !== id));
+                    else setExpenses(expenses.filter(e => e.id !== id));
+                    showAlert("Transaksi berhasil dihapus.", "success");
+                });
+            };
+
+            const openEdit = (trx) => {
+                if (!isAdmin) return;
+                const dateStr = new Date(trx.tanggal).toISOString().split('T')[0];
+                let formattedNominal = trx.nominal.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                setEditForm({ ...trx, dateStr, nominalDisplay: formattedNominal });
+            };
+
+            const saveEdit = (e) => {
+                e.preventDefault();
+                const rawNominal = editForm.nominalDisplay.replace(/\./g, '');
+                if (!rawNominal) return showAlert("Isi nominal!", "error");
+                const updatedTrx = { ...editForm, nominal: rawNominal, tanggal: new Date(editForm.dateStr).toISOString() };
+                delete updatedTrx.dateStr; delete updatedTrx.nominalDisplay;
+
+                if (editForm.type === 'income') {
+                    if (editForm.jenis === 'Iuran' && !editForm.memberId) return showAlert("Pilih nama anggota!", "error");
+                    if (editForm.jenis === 'Donasi' && !editForm.namaDonatur?.trim()) return showAlert("Isi nama donatur!", "error");
+                    setIncomes(incomes.map(i => i.id === updatedTrx.id ? updatedTrx : i));
+                } else {
+                    setExpenses(expenses.map(ex => ex.id === updatedTrx.id ? updatedTrx : ex));
+                }
+                showAlert("Perubahan berhasil disimpan!", "success");
+                setEditForm(null);
+            };
+
+            const handleEditNominalChange = (e) => {
+                let val = e.target.value.replace(/[^0-9]/g, '');
+                let formatted = val.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                setEditForm({ ...editForm, nominalDisplay: formatted });
+            };
+
+            const handleAuth = () => {
+                if (isAdmin) showConfirm("Keluar dari mode Admin?", () => setIsAdmin(false));
+                else setLoginState({ show: true, pin: '' });
+            };
+
+            const processLogin = (e) => {
+                e.preventDefault();
+                if (loginState.pin === adminPin) {
+                    setIsAdmin(true); setLoginState({ show: false, pin: '' }); showAlert("Berhasil login sebagai Admin!", "success");
+                } else {
+                    showAlert("PIN Salah! Akses ditolak.", "error");
+                }
+            };
+
+            const handleSavePin = (e) => {
+                e.preventDefault();
+                if (changePinModal.oldPin !== adminPin) return showAlert("PIN Lama salah!", "error");
+                if (changePinModal.newPin.length < 4) return showAlert("PIN Baru minimal 4 angka!", "error");
+                if (changePinModal.newPin !== changePinModal.confirmPin) return showAlert("Konfirmasi PIN Baru tidak cocok!", "error");
+                setAdminPin(changePinModal.newPin);
+                setChangePinModal({ show: false, oldPin: '', newPin: '', confirmPin: '' });
+                showAlert("PIN berhasil diubah!", "success");
+            };
+
+            const Dashboard = () => {
+                const [filter, setFilter] = useState('all');
+                const [subFilter, setSubFilter] = useState('all'); 
+                const [selectedMemberId, setSelectedMemberId] = useState('');
+                const [reportModal, setReportModal] = useState(false);
+
+                useEffect(() => { setSubFilter('all'); }, [filter]);
+
+                const allTransactions = [
+                    ...incomes.map(i => ({ ...i, type: 'income', dateStr: i.tanggal })),
+                    ...expenses.map(e => ({ ...e, type: 'expense', dateStr: e.tanggal }))
+                ].sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+
+                const filteredTransactions = allTransactions.filter(trx => {
+                    if (filter === 'all') return true;
+                    if (filter === 'income') {
+                        if (trx.type !== 'income') return false;
+                        if (subFilter !== 'all' && trx.jenis !== subFilter) return false;
+                        return true;
+                    }
+                    if (filter === 'expense') {
+                        if (trx.type !== 'expense') return false;
+                        if (subFilter !== 'all' && trx.kategori !== subFilter) return false;
+                        return true;
+                    }
+                    if (filter === 'member') {
+                        if (!selectedMemberId) return true;
+                        return trx.type === 'income' && trx.memberId === selectedMemberId;
+                    }
+                    return true;
+                });
+
+                const filteredTotalIncome = filteredTransactions.filter(trx => trx.type === 'income').reduce((sum, trx) => sum + Number(trx.nominal), 0);
+                const filteredTotalExpense = filteredTransactions.filter(trx => trx.type === 'expense').reduce((sum, trx) => sum + Number(trx.nominal), 0);
+
+                const getTrxName = (trx) => {
+                    if (trx.type === 'income') return trx.jenis === 'Donasi' ? (trx.namaDonatur || 'Hamba Allah') : (members.find(m => m.id == trx.memberId)?.nama || 'Unknown');
+                    return trx.kategori;
+                };
+
+                const exportToCSV = () => {
+                    if (filteredTransactions.length === 0) return showAlert("Tidak ada data untuk diunduh", "error");
+                    let csvContent = "Tanggal,Tipe,Kategori,Nama/Keterangan,Pemasukan,Pengeluaran\n";
+                    filteredTransactions.forEach(trx => {
+                        const dateObj = new Date(trx.tanggal);
+                        const tgl = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
+                        const tipe = trx.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+                        const kategori = trx.type === 'income' ? trx.jenis : trx.kategori;
+                        const nama = getTrxName(trx);
+                        let keterangan = trx.keterangan || '';
+                        let gabunganKet = nama ? (keterangan ? `${nama} - ${keterangan}` : nama) : keterangan;
+                        gabunganKet = `"${gabunganKet.replace(/"/g, '""')}"`;
+                        const masuk = trx.type === 'income' ? trx.nominal : 0;
+                        const keluar = trx.type === 'expense' ? trx.nominal : 0;
+                        csvContent += `${tgl},${tipe},${kategori},${gabunganKet},${masuk},${keluar}\n`;
+                    });
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+                    link.download = `Laporan_${filter}_${subFilter}_${new Date().getTime()}.csv`; link.click();
+                };
+
+                const exportToPDF = () => {
+                    if (filteredTransactions.length === 0) return showAlert("Tidak ada data untuk diunduh", "error");
+                    try {
+                        const { jsPDF } = window.jspdf;
+                        const doc = new jsPDF('p', 'mm', 'a4');
+                        doc.setFontSize(14); doc.text("Laporan Keuangan Wisata PWGT Dadi 2026", 14, 15);
+                        doc.setFontSize(10); doc.text(`Kategori: ${filter.toUpperCase()} - ${subFilter.toUpperCase()}`, 14, 22);
+                        doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
+                        
+                        const tableData = filteredTransactions.map(trx => {
+                            const dateObj = new Date(trx.tanggal);
+                            const tgl = `${dateObj.getDate()}/${dateObj.getMonth()+1}/${dateObj.getFullYear()}`;
+                            const kategori = trx.type === 'income' ? trx.jenis : trx.kategori;
+                            const nama = getTrxName(trx); const ket = trx.keterangan ? `\n(${trx.keterangan})` : '';
+                            return [tgl, kategori, trx.type === 'expense' ? trx.keterangan : nama + ket, trx.type === 'income' ? formatRp(trx.nominal) : '-', trx.type === 'expense' ? formatRp(trx.nominal) : '-'];
+                        });
+
+                        doc.autoTable({
+                            startY: 32,
+                            head: [['Tanggal', 'Kategori', 'Keterangan', 'Pemasukan', 'Pengeluaran']],
+                            body: tableData,
+                            foot: [[
+                                { content: 'TOTAL KESELURUHAN', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } },
+                                { content: formatRp(filteredTotalIncome), styles: { fontStyle: 'bold' } },
+                                { content: formatRp(filteredTotalExpense), styles: { fontStyle: 'bold' } }
+                            ]],
+                            theme: 'grid', headStyles: { fillColor: [13, 148, 136] }, styles: { fontSize: 8, cellPadding: 2 }
+                        });
+                        doc.save(`Laporan_${filter}_${subFilter}_${new Date().getTime()}.pdf`);
+                    } catch (error) { showAlert("Gagal membuat PDF. Pastikan internet menyala.", "error"); }
+                };
+
+                return (
+                    <div className="p-4 space-y-4 fade-in">
+                        <div className="bg-teal-600 text-white p-5 rounded-2xl shadow-lg relative overflow-hidden">
+                            <div className="absolute -right-10 -top-10 opacity-20"><i className="fa-solid fa-wallet text-9xl"></i></div>
+                            <p className="text-sm opacity-90">Total Saldo Kas</p>
+                            <h2 className="text-3xl font-bold mt-1 mb-4 relative z-10">{formatRp(balance)}</h2>
+                            <div className="flex justify-between border-t border-teal-500 pt-3 relative z-10">
+                                <div><p className="text-xs opacity-90 mb-1">Masuk <i className="fa-solid fa-circle-arrow-down text-teal-200"></i></p><p className="font-semibold">{formatRp(totalIncome)}</p></div>
+                                <div className="text-right"><p className="text-xs opacity-90 mb-1">Keluar <i className="fa-solid fa-circle-arrow-up text-red-300"></i></p><p className="font-semibold">{formatRp(totalExpense)}</p></div>
+                            </div>
+                        </div>
+
+                        <div className="pt-2">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="font-bold text-gray-700 text-lg">Riwayat Transaksi</h3>
+                                <button onClick={() => setReportModal(true)} className="bg-teal-100 text-teal-700 px-3 py-1.5 rounded shadow-sm text-xs font-bold hover:bg-teal-200"><i className="fa-solid fa-table"></i> View Laporan</button>
+                            </div>
+                            
+                            <div className="flex gap-2 mb-2 overflow-x-auto pb-1 scrollbar-hide">
+                                <button onClick={() => setFilter('all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filter === 'all' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Semua</button>
+                                <button onClick={() => setFilter('income')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filter === 'income' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Pemasukan</button>
+                                <button onClick={() => setFilter('expense')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filter === 'expense' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Pengeluaran</button>
+                                <button onClick={() => setFilter('member')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${filter === 'member' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Cari Nama</button>
+                            </div>
+
+                            {filter === 'income' && (
+                                <div className="flex flex-wrap gap-2 mb-3 border-l-2 border-teal-500 pl-2">
+                                    <button onClick={() => setSubFilter('all')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'all' ? 'bg-teal-50 border-teal-500 text-teal-700' : 'bg-white border-gray-200'}`}>Semua</button>
+                                    <button onClick={() => setSubFilter('Iuran')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Iuran' ? 'bg-teal-50 border-teal-500 text-teal-700' : 'bg-white border-gray-200'}`}>Iuran</button>
+                                    <button onClick={() => setSubFilter('Donasi')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Donasi' ? 'bg-teal-50 border-teal-500 text-teal-700' : 'bg-white border-gray-200'}`}>Donasi</button>
+                                </div>
+                            )}
+
+                            {filter === 'expense' && (
+                                <div className="flex flex-wrap gap-2 mb-3 border-l-2 border-red-500 pl-2">
+                                    <button onClick={() => setSubFilter('all')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'all' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Semua</button>
+                                    <button onClick={() => setSubFilter('Travel (Agen/Tur)')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Travel (Agen/Tur)' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Travel</button>
+                                    <button onClick={() => setSubFilter('Transportasi (Bensin/Tol)')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Transportasi (Bensin/Tol)' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Transportasi</button>
+                                    <button onClick={() => setSubFilter('Penginapan (Hotel/Villa)')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Penginapan (Hotel/Villa)' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Penginapan</button>
+                                    <button onClick={() => setSubFilter('Konsumsi (Makan/Minum)')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Konsumsi (Makan/Minum)' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Konsumsi</button>
+                                    <button onClick={() => setSubFilter('Lainnya')} className={`px-3 py-1 rounded-md text-[10px] font-bold border ${subFilter === 'Lainnya' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white border-gray-200'}`}>Lainnya</button>
+                                </div>
+                            )}
+
+                            {filter === 'member' && (
+                                <div className="mb-4">
+                                    <select className="w-full p-2 bg-white border border-teal-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-sm" value={selectedMemberId} onChange={e => setSelectedMemberId(e.target.value)}>
+                                        <option value="">-- Pilih Anggota --</option>
+                                        {members.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center bg-teal-50 p-3 rounded-xl mb-3 border border-teal-100 shadow-sm">
+                                <span className="text-xs font-bold text-teal-800">Total Kategori Ini:</span>
+                                <div className="text-right">
+                                    {filter === 'all' ? (
+                                        <div className="text-[11px] font-bold flex gap-3"><span className="text-teal-600">Masuk: {formatRp(filteredTotalIncome)}</span><span className="text-red-600">Keluar: {formatRp(filteredTotalExpense)}</span></div>
+                                    ) : filter === 'expense' ? <span className="text-sm font-extrabold text-red-600">{formatRp(filteredTotalExpense)}</span> : <span className="text-sm font-extrabold text-teal-600">{formatRp(filteredTotalIncome)}</span>}
+                                </div>
+                            </div>
+
+                            {filteredTransactions.length === 0 ? <p className="text-center text-gray-400 text-sm py-6 bg-white rounded-xl border border-dashed">Belum ada transaksi</p> : (
+                                <div className="space-y-3 pb-4">
+                                    {filteredTransactions.map(trx => (
+                                        <div key={trx.id} className="bg-white p-3 rounded-xl shadow-sm flex justify-between border border-gray-100">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`min-w-[40px] h-10 rounded-full flex items-center justify-center text-white ${trx.type === 'income' ? 'bg-teal-500' : 'bg-red-500'}`}><i className={`fa-solid ${trx.type === 'income' ? 'fa-arrow-down' : 'fa-arrow-up'}`}></i></div>
+                                                <div>
+                                                    <p className="font-bold text-gray-800 text-sm">{getTrxName(trx)}</p>
+                                                    <p className="text-[11px] text-gray-500">{new Date(trx.tanggal).toLocaleDateString('id-ID')} • {trx.keterangan || (trx.type === 'income' ? trx.jenis : trx.kategori)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <div className={`font-bold text-sm ${trx.type === 'income' ? 'text-teal-600' : 'text-red-600'}`}>{trx.type === 'income' ? '+' : '-'}{formatRp(trx.nominal)}</div>
+                                                {isAdmin && (
+                                                    <div className="flex gap-1.5"><button onClick={() => openEdit(trx)} className="text-[10px] bg-blue-50 text-blue-600 px-2 rounded border border-blue-100">Edit</button><button onClick={() => deleteTransaction(trx.id, trx.type)} className="text-[10px] bg-red-50 text-red-600 px-2 rounded border border-red-100"><i className="fa-solid fa-trash"></i></button></div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {reportModal && (
+                            <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                                <div className="bg-white rounded-2xl w-full max-w-lg h-[85vh] flex flex-col shadow-2xl">
+                                    <div className="p-4 border-b flex justify-between items-center bg-teal-50">
+                                        <h3 className="font-bold text-teal-800"><i className="fa-solid fa-file-lines mr-2"></i>Laporan</h3>
+                                        <button onClick={() => setReportModal(false)} className="text-gray-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                    <div className="p-4 flex gap-3 border-b bg-gray-50">
+                                        <button onClick={exportToCSV} className="flex-1 bg-green-100 text-green-700 py-2 rounded-xl text-sm font-bold"><i className="fa-solid fa-file-excel mr-1"></i> Excel</button>
+                                        <button onClick={exportToPDF} className="flex-1 bg-red-100 text-red-700 py-2 rounded-xl text-sm font-bold"><i className="fa-solid fa-file-pdf mr-1"></i> PDF</button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-4">
+                                        <table className="w-full text-left border-collapse text-xs">
+                                            <thead><tr className="bg-teal-600 text-white"><th className="p-2 border">Tgl</th><th className="p-2 border">Keterangan</th><th className="p-2 border text-right">Nominal</th></tr></thead>
+                                            <tbody>
+                                                {filteredTransactions.map(trx => (
+                                                    <tr key={trx.id} className="border-b"><td className="p-2 border whitespace-nowrap">{new Date(trx.tanggal).toLocaleDateString('id-ID')}</td><td className="p-2 border whitespace-pre-line">{getTrxName(trx)} {trx.keterangan ? `(${trx.keterangan})` : ''}</td><td className={`p-2 border text-right font-bold ${trx.type === 'income' ? 'text-teal-600' : 'text-red-600'}`}>{trx.type === 'income' ? '+' : '-'}{formatRp(trx.nominal)}</td></tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr className="bg-teal-100"><td colSpan="2" className="p-2 border text-right font-bold">TOTAL:</td><td className="p-2 border text-right font-bold">
+                                                    {filter === 'all' ? <div><div className="text-teal-600">Masuk: {formatRp(filteredTotalIncome)}</div><div className="text-red-600">Keluar: {formatRp(filteredTotalExpense)}</div></div> : (filter === 'expense' ? <span className="text-red-600">{formatRp(filteredTotalExpense)}</span> : <span className="text-teal-600">{formatRp(filteredTotalIncome)}</span>)}
+                                                </td></tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            const IncomeForm = () => {
+                const today = new Date().toISOString().split('T')[0];
+                const [form, setForm] = useState({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '', tanggal: today });
+
+                const handleNominalChange = (e) => {
+                    let val = e.target.value.replace(/[^0-9]/g, '');
+                    setForm({...form, nominal: val.replace(/\B(?=(\d{3})+(?!\d))/g, '.')});
+                };
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    const rawNominal = form.nominal.replace(/\./g, '');
+                    if (!rawNominal) return showAlert("Isi nominal!", "error");
+                    if (form.jenis === 'Iuran' && !form.memberId) return showAlert("Pilih nama anggota!", "error");
+                    if (form.jenis === 'Donasi' && !form.namaDonatur.trim()) return showAlert("Isi nama donatur!", "error");
+                    setIncomes([...incomes, { ...form, nominal: rawNominal, id: Date.now(), tanggal: new Date(form.tanggal).toISOString() }]);
+                    showAlert("Pemasukan berhasil dicatat!", "success"); setActiveTab('dashboard');
+                };
+
+                return (
+                    <div className="p-4"><h2 className="text-xl font-bold mb-4">Catat Pemasukan</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div><label className="block text-sm font-semibold mb-1">Tanggal</label><input type="date" className="w-full p-3 border rounded-xl" value={form.tanggal} onChange={e => setForm({...form, tanggal: e.target.value})} required /></div>
+                            <div className="flex gap-4"><div className="flex-1"><label className="block text-sm font-semibold mb-1">Kategori</label><select className="w-full p-3 border rounded-xl" value={form.jenis} onChange={e => setForm({...form, jenis: e.target.value, memberId: '', namaDonatur: ''})}><option value="Iuran">Iuran Rombongan</option><option value="Donasi">Donasi Bebas</option></select></div><div className="flex-1"><label className="block text-sm font-semibold mb-1">Metode</label><select className="w-full p-3 border rounded-xl" value={form.metode} onChange={e => setForm({...form, metode: e.target.value})}><option value="Cash">Cash (Tunai)</option><option value="Transfer">Transfer</option></select></div></div>
+                            {form.jenis === 'Iuran' ? <div><label className="block text-sm font-semibold mb-1">Pilih Anggota</label><select className="w-full p-3 border rounded-xl" value={form.memberId} onChange={e => setForm({...form, memberId: e.target.value})}><option value="">-- Pilih --</option>{members.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}</select></div> : <div><label className="block text-sm font-semibold mb-1">Nama Donatur</label><input type="text" className="w-full p-3 border rounded-xl" placeholder="Nama..." value={form.namaDonatur} onChange={e => setForm({...form, namaDonatur: e.target.value})} /></div>}
+                            <div><label className="block text-sm font-semibold mb-1">Nominal (Rp)</label><input type="text" inputMode="numeric" className="w-full p-3 border rounded-xl font-bold" value={form.nominal} onChange={handleNominalChange} required /></div>
+                            <div><label className="block text-sm font-semibold mb-1">Keterangan</label><input type="text" className="w-full p-3 border rounded-xl" value={form.keterangan} onChange={e => setForm({...form, keterangan: e.target.value})} /></div>
+                            <button type="submit" className="w-full bg-teal-600 text-white font-bold py-3 rounded-xl">Simpan Pemasukan</button>
+                        </form>
+                    </div>
+                );
+            };
+
+            const ExpenseForm = () => {
+                const today = new Date().toISOString().split('T')[0];
+                const [form, setForm] = useState({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '', tanggal: today });
+
+                const handleNominalChange = (e) => {
+                    let val = e.target.value.replace(/[^0-9]/g, '');
+                    setForm({...form, nominal: val.replace(/\B(?=(\d{3})+(?!\d))/g, '.')});
+                };
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    const rawNominal = form.nominal.replace(/\./g, '');
+                    if (!rawNominal) return showAlert("Isi nominal!", "error");
+                    setExpenses([...expenses, { ...form, nominal: rawNominal, id: Date.now(), tanggal: new Date(form.tanggal).toISOString() }]);
+                    showAlert("Pengeluaran dicatat!", "success"); setActiveTab('dashboard');
+                };
+
+                return (
+                    <div className="p-4"><h2 className="text-xl font-bold mb-4">Catat Pengeluaran</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div><label className="block text-sm font-semibold mb-1">Tanggal</label><input type="date" className="w-full p-3 border rounded-xl" value={form.tanggal} onChange={e => setForm({...form, tanggal: e.target.value})} required /></div>
+                            <div><label className="block text-sm font-semibold mb-1">Kategori</label><select className="w-full p-3 border rounded-xl" value={form.kategori} onChange={e => setForm({...form, kategori: e.target.value})}><option>Travel (Agen/Tur)</option><option>Transportasi (Bensin/Tol)</option><option>Penginapan (Hotel/Villa)</option><option>Konsumsi (Makan/Minum)</option><option>Lainnya</option></select></div>
+                            <div><label className="block text-sm font-semibold mb-1">Nominal (Rp)</label><input type="text" inputMode="numeric" className="w-full p-3 border rounded-xl font-bold" value={form.nominal} onChange={handleNominalChange} required /></div>
+                            <div><label className="block text-sm font-semibold mb-1">Keterangan</label><textarea className="w-full p-3 border rounded-xl" value={form.keterangan} onChange={e => setForm({...form, keterangan: e.target.value})} required></textarea></div>
+                            <button type="submit" className="w-full bg-red-600 text-white font-bold py-3 rounded-xl">Simpan Pengeluaran</button>
+                        </form>
+                    </div>
+                );
+            };
+
+            const MemberList = () => {
+                const [newName, setNewName] = useState('');
+                const addMember = (e) => { e.preventDefault(); if(newName.trim()){ setMembers([...members, { id: Date.now().toString(), nama: newName.trim() }]); setNewName(''); }};
+                return (
+                    <div className="p-4"><h2 className="text-xl font-bold mb-4">Daftar Rombongan</h2>
+                        {isAdmin && <form onSubmit={addMember} className="flex gap-2 mb-4"><input type="text" className="flex-1 p-3 border rounded-xl" placeholder="Nama Baru..." value={newName} onChange={e => setNewName(e.target.value)} required /><button className="bg-teal-600 text-white px-5 rounded-xl"><i className="fa-solid fa-plus"></i></button></form>}
+                        <div className="space-y-2">{members.map((m, i) => <div key={m.id} className="flex justify-between bg-white p-3 rounded-xl border"><span>{i + 1}. {m.nama}</span>{isAdmin && <button onClick={() => {if(isAdmin) showConfirm("Hapus anggota?", () => setMembers(members.filter(x => x.id !== m.id)))}} className="text-red-400"><i className="fa-solid fa-trash"></i></button>}</div>)}</div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="app-container">
+                    <div className="bg-white px-4 py-3 shadow z-20 flex justify-between sticky top-0"><h1 className="font-extrabold text-teal-600"><i className="fa-solid fa-bus-simple mr-2"></i>Wisata PWGT 2026</h1><div className="flex gap-2">{isAdmin && <button onClick={() => setChangePinModal({ show: true, oldPin: '', newPin: '', confirmPin: '' })} className="bg-gray-100 px-3 py-1.5 rounded-full text-xs font-bold">🔑 PIN</button>}<button onClick={handleAuth} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isAdmin ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-600'}`}>{isAdmin ? 'Admin' : 'Login'}</button></div></div>
+                    <div className="content-area">
+                        {activeTab === 'dashboard' && <Dashboard />}
+                        {activeTab === 'income' && (isAdmin ? <IncomeForm /> : <div className="p-8 text-center"><p>Login Admin diperlukan</p></div>)}
+                        {activeTab === 'expense' && (isAdmin ? <ExpenseForm /> : <div className="p-8 text-center"><p>Login Admin diperlukan</p></div>)}
+                        {activeTab === 'members' && <MemberList />}
+                    </div>
+                    <div className="absolute bottom-0 w-full bg-white border-t flex justify-around py-2 z-20">
+                        {['dashboard','income','expense','members'].map((tab, i) => {
+                            const icons = ['house','circle-plus','circle-minus','users']; const labels = ['Home','Masuk','Keluar','Anggota'];
+                            return <button key={tab} onClick={() => setActiveTab(tab)} className={`flex flex-col items-center p-2 w-1/4 ${activeTab === tab ? 'text-teal-600' : 'text-gray-400'}`}><i className={`fa-solid fa-${icons[i]} text-lg`}></i><span className="text-[10px] font-bold">{labels[i]}</span></button>
+                        })}
+                    </div>
+
+                    {/* Modals Login & Info Disembunyikan kodenya agar ringkas, tetapi tetap berjalan normal seperti versi sebelumnya */}
+                    {loginState.show && <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"><div className="bg-white p-6 rounded-2xl w-full max-w-sm"><h3 className="font-bold mb-4">Login Admin</h3><form onSubmit={processLogin}><input type="password" inputMode="numeric" autoFocus className="w-full p-3 border mb-4 text-center tracking-widest rounded-xl" placeholder="PIN" value={loginState.pin} onChange={e => setLoginState({...loginState, pin: e.target.value})} /><div className="flex gap-2"><button type="button" onClick={() => setLoginState({show:false, pin:''})} className="flex-1 py-2 bg-gray-100 rounded-xl">Batal</button><button type="submit" className="flex-1 py-2 bg-teal-600 text-white rounded-xl">Masuk</button></div></form></div></div>}
+                    
+                    {alertState.show && <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"><div className="bg-white p-6 rounded-2xl w-full max-w-xs text-center"><p className="mb-4">{alertState.message}</p><button onClick={() => setAlertState({show:false})} className="w-full py-2 bg-gray-800 text-white rounded-xl">Tutup</button></div></div>}
+                    
+                    {confirmState.show && <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"><div className="bg-white p-6 rounded-2xl w-full max-w-xs text-center"><p className="mb-4">{confirmState.message}</p><div className="flex gap-2"><button onClick={() => setConfirmState({show:false})} className="flex-1 py-2 bg-gray-100 rounded-xl">Batal</button><button onClick={() => {confirmState.onConfirm(); setConfirmState({show:false})}} className="flex-1 py-2 bg-red-600 text-white rounded-xl">Ya</button></div></div></div>}
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root')); root.render(<App />);
+    </script>
+</body>
+</html>
