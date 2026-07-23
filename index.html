@@ -399,7 +399,8 @@
             );
 
             const IncomeForm = () => {
-                const [form, setForm] = useState({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '' });
+                const today = new Date().toISOString().split('T')[0];
+                const [form, setForm] = useState({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '', tanggal: today });
                 const [isSubmitting, setIsSubmitting] = useState(false);
 
                 const handleNominalChange = (e) => {
@@ -413,6 +414,7 @@
                     const rawNominal = form.nominal.replace(/\./g, '');
                     if (!rawNominal) return showAlert("Isi nominal!", "error");
                     if (form.jenis === 'Iuran' && !form.memberId) return showAlert("Pilih nama anggota rombongan!", "error");
+                    if (form.jenis === 'Donasi' && !form.namaDonatur.trim()) return showAlert("Isi nama donatur!", "error");
                     
                     setIsSubmitting(true);
                     try {
@@ -424,13 +426,17 @@
                                 jenis: form.jenis,
                                 metode: form.metode,
                                 nominal: rawNominal,
-                                keterangan: form.jenis === 'Donasi' ? (form.namaDonatur ? `Donatur: ${form.namaDonatur} - ${form.keterangan}` : form.keterangan) : form.keterangan
+                                keterangan: form.jenis === 'Donasi' ? `Donatur: ${form.namaDonatur} - ${form.keterangan}` : form.keterangan,
+                                tanggal: form.tanggal // Kirim tanggal dari input
                             })
                         });
-                        if (!res.ok) throw new Error("Gagal menyimpan ke server");
+                        
+                        const result = await res.json();
+                        if (!res.ok) throw new Error(result.error || "Gagal menyimpan ke server");
+                        
                         await fetchData();
                         showAlert("Pemasukan berhasil dicatat di Server!", "success");
-                        setForm({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '' });
+                        setForm({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '', tanggal: today });
                         setActiveTab('dashboard');
                     } catch (err) {
                         showAlert("Gagal: " + err.message, "error");
@@ -443,6 +449,11 @@
                     <div className="p-4 fade-in">
                         <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-teal-100 pb-2">Catat Pemasukan</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Tanggal</label>
+                                <input type="date" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none font-bold text-teal-700" 
+                                    value={form.tanggal} onChange={e => setForm({...form, tanggal: e.target.value})} required />
+                            </div>
                             <div className="flex gap-4 mb-2">
                                 <div className="flex-1">
                                     <label className="block text-sm font-semibold text-gray-600 mb-1">Kategori</label>
@@ -489,7 +500,8 @@
             };
 
             const ExpenseForm = () => {
-                const [form, setForm] = useState({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '' });
+                const today = new Date().toISOString().split('T')[0];
+                const [form, setForm] = useState({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '', tanggal: today });
                 const [isSubmitting, setIsSubmitting] = useState(false);
 
                 const handleNominalChange = (e) => {
@@ -511,13 +523,17 @@
                             body: JSON.stringify({
                                 kategori: form.kategori,
                                 nominal: rawNominal,
-                                keterangan: form.keterangan
+                                keterangan: form.keterangan,
+                                tanggal: form.tanggal // Kirim tanggal
                             })
                         });
-                        if (!res.ok) throw new Error("Gagal menyimpan ke server");
+                        
+                        const result = await res.json();
+                        if (!res.ok) throw new Error(result.error || "Gagal menyimpan ke server");
+                        
                         await fetchData();
                         showAlert("Pengeluaran berhasil dicatat di Server!", "success");
-                        setForm({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '' });
+                        setForm({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '', tanggal: today });
                         setActiveTab('dashboard');
                     } catch (err) {
                         showAlert("Gagal: " + err.message, "error");
@@ -530,6 +546,11 @@
                     <div className="p-4 fade-in">
                         <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-red-100 pb-2">Catat Pengeluaran</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Tanggal</label>
+                                <input type="date" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none font-bold text-red-700" 
+                                    value={form.tanggal} onChange={e => setForm({...form, tanggal: e.target.value})} required />
+                            </div>
                             <div>
                                 <label className="block text-sm font-semibold text-gray-600 mb-1">Kategori Pengeluaran</label>
                                 <select className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none" value={form.kategori} onChange={e => setForm({...form, kategori: e.target.value})}>
