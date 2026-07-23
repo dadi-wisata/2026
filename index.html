@@ -85,10 +85,18 @@
 
             const deleteTransaction = (id, type) => {
                 if (!isAdmin) return;
-                showConfirm("Hapus transaksi ini?", () => {
-                    if (type === 'income') setIncomes(incomes.filter(i => i.id !== id));
-                    else setExpenses(expenses.filter(e => e.id !== id));
-                    showAlert("Transaksi dihapus dari tampilan.", "success");
+                showConfirm("Hapus transaksi ini permanen dari server?", async () => {
+                    try {
+                        const endpoint = type === 'income' ? `/api/incomes/${id}` : `/api/expenses/${id}`;
+                        const res = await fetch(`${API_URL}${endpoint}`, { method: 'DELETE' });
+                        if (!res.ok) throw new Error("Gagal menghapus dari server");
+                        
+                        if (type === 'income') setIncomes(incomes.filter(i => i.id !== id));
+                        else setExpenses(expenses.filter(e => e.id !== id));
+                        showAlert("Transaksi dihapus secara permanen.", "success");
+                    } catch (error) {
+                        showAlert("Gagal menghapus: " + error.message, "error");
+                    }
                 });
             };
 
@@ -378,12 +386,26 @@
                     }
                 };
 
+                const removeMember = (id) => {
+                    if (!isAdmin) return;
+                    showConfirm("Hapus anggota ini dari server?", async () => {
+                        try {
+                            const res = await fetch(`${API_URL}/api/members/${id}`, { method: 'DELETE' });
+                            if (!res.ok) throw new Error("Gagal menghapus dari server");
+                            setMembers(members.filter(m => m.id !== id));
+                            showAlert("Anggota berhasil dihapus.", "success");
+                        } catch (error) {
+                            showAlert("Gagal menghapus: " + error.message, "error");
+                        }
+                    });
+                };
+
                 return (
                     <div className="p-4"><h2 className="text-xl font-bold mb-4">Daftar Rombongan</h2>
                         {isAdmin && <form onSubmit={addMember} className="flex gap-2 mb-4"><input type="text" className="flex-1 p-3 border rounded-xl" placeholder="Nama Baru..." value={newName} onChange={e => setNewName(e.target.value)} required /><button disabled={isSubmitting} className="bg-teal-600 text-white px-5 rounded-xl flex items-center justify-center min-w-[50px]">{isSubmitting ? <div className="loader"></div> : <i className="fa-solid fa-plus"></i>}</button></form>}
                         <div className="space-y-2">
                             {members.length === 0 ? <p className="text-center text-gray-400 py-4">Belum ada anggota.</p> : null}
-                            {members.map((m, i) => <div key={m.id} className="flex justify-between bg-white p-3 rounded-xl border"><span>{i + 1}. {m.nama}</span>{isAdmin && <button onClick={() => {if(isAdmin) showConfirm("Hapus anggota?", () => null)}} className="text-red-400"><i className="fa-solid fa-trash"></i></button>}</div>)}
+                            {members.map((m, i) => <div key={m.id} className="flex justify-between items-center bg-white p-3 rounded-xl border"><span>{i + 1}. {m.nama}</span>{isAdmin && <button onClick={() => removeMember(m.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-lg"><i className="fa-solid fa-trash"></i></button>}</div>)}
                         </div>
                     </div>
                 );
