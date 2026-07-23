@@ -389,13 +389,180 @@
                 );
             };
 
+            const RestrictedAccess = () => (
+                <div className="p-8 flex flex-col items-center justify-center h-full text-center fade-in mt-10">
+                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-gray-400 mb-4"><i className="fa-solid fa-lock text-3xl"></i></div>
+                    <h2 className="text-xl font-bold text-gray-800 mb-2">Akses Terkunci</h2>
+                    <p className="text-gray-500 text-sm mb-6">Anda harus login sebagai Admin untuk mencatat transaksi.</p>
+                    <button onClick={handleAuth} className="bg-teal-600 text-white px-6 py-2 rounded-full font-bold shadow hover:bg-teal-700">Login Admin</button>
+                </div>
+            );
+
+            const IncomeForm = () => {
+                const [form, setForm] = useState({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '' });
+                const [isSubmitting, setIsSubmitting] = useState(false);
+
+                const handleNominalChange = (e) => {
+                    let val = e.target.value.replace(/[^0-9]/g, '');
+                    let formatted = val.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                    setForm({...form, nominal: formatted});
+                };
+
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    const rawNominal = form.nominal.replace(/\./g, '');
+                    if (!rawNominal) return showAlert("Isi nominal!", "error");
+                    if (form.jenis === 'Iuran' && !form.memberId) return showAlert("Pilih nama anggota rombongan!", "error");
+                    
+                    setIsSubmitting(true);
+                    try {
+                        const res = await fetch(`${API_URL}/api/incomes`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                memberId: form.jenis === 'Iuran' ? form.memberId : null,
+                                jenis: form.jenis,
+                                metode: form.metode,
+                                nominal: rawNominal,
+                                keterangan: form.jenis === 'Donasi' ? (form.namaDonatur ? `Donatur: ${form.namaDonatur} - ${form.keterangan}` : form.keterangan) : form.keterangan
+                            })
+                        });
+                        if (!res.ok) throw new Error("Gagal menyimpan ke server");
+                        await fetchData();
+                        showAlert("Pemasukan berhasil dicatat di Server!", "success");
+                        setForm({ memberId: '', namaDonatur: '', jenis: 'Iuran', metode: 'Cash', nominal: '', keterangan: '' });
+                        setActiveTab('dashboard');
+                    } catch (err) {
+                        showAlert("Gagal: " + err.message, "error");
+                    } finally {
+                        setIsSubmitting(false);
+                    }
+                };
+
+                return (
+                    <div className="p-4 fade-in">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-teal-100 pb-2">Catat Pemasukan</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="flex gap-4 mb-2">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-semibold text-gray-600 mb-1">Kategori</label>
+                                    <select className="w-full p-3 bg-teal-50 border border-teal-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none font-bold text-teal-800" value={form.jenis} onChange={e => setForm({...form, jenis: e.target.value, memberId: '', namaDonatur: ''})}>
+                                        <option value="Iuran">Iuran Rombongan</option>
+                                        <option value="Donasi">Donasi Bebas</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-semibold text-gray-600 mb-1">Metode</label>
+                                    <select className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" value={form.metode} onChange={e => setForm({...form, metode: e.target.value})}>
+                                        <option value="Cash">Cash (Tunai)</option><option value="Transfer">Transfer</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {form.jenis === 'Iuran' ? (
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 mb-1">Pilih Anggota</label>
+                                    <select className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" value={form.memberId} onChange={e => setForm({...form, memberId: e.target.value})}>
+                                        <option value="">-- Pilih Nama dari Daftar --</option>
+                                        {members.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-600 mb-1">Nama Donatur</label>
+                                    <input type="text" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Nama penyumbang..." value={form.namaDonatur} onChange={e => setForm({...form, namaDonatur: e.target.value})} />
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Nominal (Rp)</label>
+                                <input type="text" inputMode="numeric" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Contoh: 150.000" value={form.nominal} onChange={handleNominalChange} required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Keterangan (Opsional)</label>
+                                <input type="text" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Contoh: Lunas untuk 2 orang" value={form.keterangan} onChange={e => setForm({...form, keterangan: e.target.value})} />
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-teal-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-teal-700 mt-4 flex justify-center items-center h-12">
+                                {isSubmitting ? <div className="loader border-white border-t-teal-600"></div> : <><i className="fa-solid fa-save mr-2"></i> Simpan Pemasukan</>}
+                            </button>
+                        </form>
+                    </div>
+                );
+            };
+
+            const ExpenseForm = () => {
+                const [form, setForm] = useState({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '' });
+                const [isSubmitting, setIsSubmitting] = useState(false);
+
+                const handleNominalChange = (e) => {
+                    let val = e.target.value.replace(/[^0-9]/g, '');
+                    let formatted = val.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                    setForm({...form, nominal: formatted});
+                };
+
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    const rawNominal = form.nominal.replace(/\./g, '');
+                    if (!rawNominal) return showAlert("Isi nominal!", "error");
+                    
+                    setIsSubmitting(true);
+                    try {
+                        const res = await fetch(`${API_URL}/api/expenses`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                kategori: form.kategori,
+                                nominal: rawNominal,
+                                keterangan: form.keterangan
+                            })
+                        });
+                        if (!res.ok) throw new Error("Gagal menyimpan ke server");
+                        await fetchData();
+                        showAlert("Pengeluaran berhasil dicatat di Server!", "success");
+                        setForm({ kategori: 'Konsumsi (Makan/Minum)', nominal: '', keterangan: '' });
+                        setActiveTab('dashboard');
+                    } catch (err) {
+                        showAlert("Gagal: " + err.message, "error");
+                    } finally {
+                        setIsSubmitting(false);
+                    }
+                };
+
+                return (
+                    <div className="p-4 fade-in">
+                        <h2 className="text-xl font-bold text-gray-800 mb-4 border-b border-red-100 pb-2">Catat Pengeluaran</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Kategori Pengeluaran</label>
+                                <select className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none" value={form.kategori} onChange={e => setForm({...form, kategori: e.target.value})}>
+                                    <option value="Travel (Agen/Tur)">Travel (Agen/Tur)</option>
+                                    <option value="Transportasi (Bensin/Tol)">Transportasi (Bensin/Tol)</option>
+                                    <option value="Penginapan (Hotel/Villa)">Penginapan (Hotel/Villa)</option>
+                                    <option value="Konsumsi (Makan/Minum)">Konsumsi (Makan/Minum)</option>
+                                    <option value="Lainnya">Lainnya</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Nominal (Rp)</label>
+                                <input type="text" inputMode="numeric" className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none" placeholder="Contoh: 500.000" value={form.nominal} onChange={handleNominalChange} required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-600 mb-1">Keterangan Detail</label>
+                                <textarea className="w-full p-3 bg-white border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none h-24" placeholder="Contoh: Bayar tiket masuk" value={form.keterangan} onChange={e => setForm({...form, keterangan: e.target.value})} required></textarea>
+                            </div>
+                            <button type="submit" disabled={isSubmitting} className="w-full bg-red-600 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-red-700 mt-4 flex justify-center items-center h-12">
+                                {isSubmitting ? <div className="loader border-white border-t-red-600"></div> : <><i className="fa-solid fa-save mr-2"></i> Simpan Pengeluaran</>}
+                            </button>
+                        </form>
+                    </div>
+                );
+            };
+
             return (
                 <div className="app-container">
                     <div className="bg-white px-4 py-3 shadow z-20 flex justify-between sticky top-0"><h1 className="font-extrabold text-teal-600"><i className="fa-solid fa-bus-simple mr-2"></i>Wisata PWGT 2026</h1><div className="flex gap-2">{isAdmin && <button onClick={() => setChangePinModal({ show: true, oldPin: '', newPin: '', confirmPin: '' })} className="bg-gray-100 px-3 py-1.5 rounded-full text-xs font-bold">🔑 PIN</button>}<button onClick={handleAuth} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isAdmin ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-600'}`}>{isAdmin ? 'Admin' : 'Login'}</button></div></div>
                     <div className="content-area">
                         {activeTab === 'dashboard' && <Dashboard />}
-                        {activeTab === 'income' && (isAdmin ? <div className="p-4">Form Masuk</div> : <div className="p-8 text-center">Login Admin diperlukan</div>)}
-                        {activeTab === 'expense' && (isAdmin ? <div className="p-4">Form Keluar</div> : <div className="p-8 text-center">Login Admin diperlukan</div>)}
+                        {activeTab === 'income' && (isAdmin ? <IncomeForm /> : <RestrictedAccess />)}
+                        {activeTab === 'expense' && (isAdmin ? <ExpenseForm /> : <RestrictedAccess />)}
                         {activeTab === 'members' && <MemberList />}
                     </div>
                     <div className="absolute bottom-0 w-full bg-white border-t flex justify-around py-2 z-20">
