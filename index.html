@@ -104,13 +104,56 @@
                 if (!isAdmin) return;
                 const dateStr = new Date(trx.tanggal).toISOString().split('T')[0];
                 let formattedNominal = trx.nominal.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-                setEditForm({ ...trx, dateStr, nominalDisplay: formattedNominal });
+                
+                // Pastikan memberId ditangkap dengan benar dari database (member_id)
+                setEditForm({ ...trx, dateStr, nominalDisplay: formattedNominal, memberId: trx.member_id || '' });
             };
 
-            const saveEdit = (e) => {
+            const saveEdit = async (e) => {
                 e.preventDefault();
-                showAlert("Fitur Edit permanen sedang disiapkan.", "info");
-                setEditForm(null);
+                const rawNominal = editForm.nominalDisplay.replace(/\./g, '');
+                if (!rawNominal) return showAlert("Isi nominal!", "error");
+
+                if (editForm.type === 'income' && editForm.jenis === 'Iuran' && !editForm.memberId) {
+                    return showAlert("Pilih nama anggota rombongan!", "error");
+                }
+
+                try {
+                    const endpoint = editForm.type === 'income' ? `/api/incomes/${editForm.id}` : `/api/expenses/${editForm.id}`;
+                    
+                    let bodyData = {};
+                    if (editForm.type === 'income') {
+                        bodyData = {
+                            memberId: editForm.memberId,
+                            jenis: editForm.jenis,
+                            metode: editForm.metode,
+                            nominal: rawNominal,
+                            keterangan: editForm.keterangan,
+                            tanggal: editForm.dateStr
+                        };
+                    } else {
+                        bodyData = {
+                            kategori: editForm.kategori,
+                            nominal: rawNominal,
+                            keterangan: editForm.keterangan,
+                            tanggal: editForm.dateStr
+                        };
+                    }
+
+                    const res = await fetch(`${API_URL}${endpoint}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(bodyData)
+                    });
+                    
+                    if (!res.ok) throw new Error("Gagal mengedit di server");
+                    
+                    await fetchData(); // Refresh data dari server agar saldo berubah
+                    showAlert("Perubahan berhasil disimpan permanen!", "success");
+                    setEditForm(null);
+                } catch (error) {
+                    showAlert("Gagal menyimpan perubahan: " + error.message, "error");
+                }
             };
 
             const handleEditNominalChange = (e) => {
