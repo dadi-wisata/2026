@@ -208,7 +208,8 @@
                     }
                     if (filter === 'expense') {
                         if (trx.type !== 'expense') return false;
-                        if (subFilter !== 'all' && trx.kategori !== subFilter) return false;
+                        // PERBAIKAN: Gunakan 'includes' agar kata "Travel" cocok dengan "Travel (Agen/Tur)"
+                        if (subFilter !== 'all' && !trx.kategori.includes(subFilter)) return false;
                         return true;
                     }
                     if (filter === 'member') {
@@ -347,7 +348,7 @@
                             {isLoading ? <div className="flex flex-col items-center py-10"><div className="loader mb-2 border-teal-600"></div><p className="text-xs text-gray-500">Memuat data dari Cloudflare...</p></div> : filteredTransactions.length === 0 ? <p className="text-center text-gray-400 text-sm py-6 bg-white rounded-xl border border-dashed">Belum ada transaksi</p> : (
                                 <div className="space-y-3 pb-4">
                                     {filteredTransactions.map(trx => (
-                                        <div key={trx.id} className="bg-white p-3 rounded-xl shadow-sm flex justify-between border border-gray-100">
+                                        <div key={`${trx.type}-${trx.id}`} className="bg-white p-3 rounded-xl shadow-sm flex justify-between border border-gray-100">
                                             <div className="flex items-center gap-3">
                                                 <div className={`min-w-[40px] h-10 rounded-full flex items-center justify-center text-white ${trx.type === 'income' ? 'bg-teal-500' : 'bg-red-500'}`}><i className={`fa-solid ${trx.type === 'income' ? 'fa-arrow-down' : 'fa-arrow-up'}`}></i></div>
                                                 <div>
@@ -383,7 +384,7 @@
                                             <thead><tr className="bg-teal-600 text-white"><th className="p-2 border">Tgl</th><th className="p-2 border">Keterangan</th><th className="p-2 border text-right">Nominal</th></tr></thead>
                                             <tbody>
                                                 {filteredTransactions.map(trx => (
-                                                    <tr key={trx.id} className="border-b"><td className="p-2 border whitespace-nowrap">{new Date(trx.tanggal).toLocaleDateString('id-ID')}</td><td className="p-2 border whitespace-pre-line">{getTrxName(trx)} {trx.keterangan ? `(${trx.keterangan})` : ''}</td><td className={`p-2 border text-right font-bold ${trx.type === 'income' ? 'text-teal-600' : 'text-red-600'}`}>{trx.type === 'income' ? '+' : '-'}{formatRp(trx.nominal)}</td></tr>
+                                                    <tr key={`${trx.type}-${trx.id}`} className="border-b"><td className="p-2 border whitespace-nowrap">{new Date(trx.tanggal).toLocaleDateString('id-ID')}</td><td className="p-2 border whitespace-pre-line">{getTrxName(trx)} {trx.keterangan ? `(${trx.keterangan})` : ''}</td><td className={`p-2 border text-right font-bold ${trx.type === 'income' ? 'text-teal-600' : 'text-red-600'}`}>{trx.type === 'income' ? '+' : '-'}{formatRp(trx.nominal)}</td></tr>
                                                 ))}
                                             </tbody>
                                             <tfoot>
